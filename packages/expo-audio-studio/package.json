@@ -1,6 +1,6 @@
 {
     "name": "@miklermpz/expo-audio-studio",
-    "version": "2.18.2",
+    "version": "2.18.3",
     "description": "This is a forked version of the original [expo-audio-studio](https://github.com/deeeed/expo-audio-stream/blob/main/packages/expo-audio-studio/README.md) by Arthur Breton <abreton@siteed.net> (https://github.com/deeeed)",
     "license": "MIT",
     "type": "commonjs",
