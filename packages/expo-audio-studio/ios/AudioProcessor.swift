@@ -460,7 +460,7 @@ public class AudioProcessor {
     ) -> Features {
         let rms = sqrt(sumSquares / Float(segmentLength))
         let energy = featureOptions["energy"] == true ? sumSquares : 0
-        let zcr = featureOptions["zcr"] == true ? Float(zeroCrossings) / Float(segmentLength) : 0
+        let zcr = featureOptions["zcr"] == true ? calculateZeroCrossingRate(segmentData) : 0
         let mfcc = featureOptions["mfcc"] == true ? extractMFCC(from: segmentData, sampleRate: sampleRate) : []
         let spectralCentroid = featureOptions["spectralCentroid"] == true ? extractSpectralCentroid(from: segmentData, sampleRate: sampleRate) : 0
         let spectralFlatness = featureOptions["spectralFlatness"] == true ? extractSpectralFlatness(from: segmentData) : 0

@@ -207,27 +207,96 @@ private func findPeaks(in data: [Float], minProminence: Float) -> [Int] {
 }
 
 func extractHNR(from segment: [Float]) -> Float {
-    let frameSize = segment.count
-    var autocorrelation = [Float](repeating: 0, count: frameSize)
-    
-    // Compute autocorrelation
-    vDSP_conv(segment, 1, segment.reversed(), 1, &autocorrelation, 1, vDSP_Length(frameSize), vDSP_Length(frameSize))
-    
-    // Find peaks with minimum prominence
-    if let maxValue = autocorrelation.max() {
-        let peaks = findPeaks(in: autocorrelation, minProminence: 0.1 * maxValue)
-        
-        // Find first peak after zero lag
-        if let firstPeakIndex = peaks.first(where: { $0 > 0 }) {
-            let harmonicEnergy = autocorrelation[firstPeakIndex]
-            let noiseEnergy = autocorrelation[0] - harmonicEnergy
-            if noiseEnergy > 0 {
-                return 10 * log10(harmonicEnergy / noiseEnergy)
-            }
+    let N = segment.count
+    guard N >= 64 else {
+        print("extractHNR: too few samples (N=\(N))")
+        return 0.0
+    }
+
+    // --- 1) DC removal + Hann window ---
+    var x = segment
+    var mean: Float = 0
+    vDSP_meanv(x, 1, &mean, vDSP_Length(N))
+    var negMean = -mean
+    vDSP_vsadd(x, 1, &negMean, &x, 1, vDSP_Length(N))
+
+    var window = [Float](repeating: 0, count: N)
+    vDSP_hann_window(&window, vDSP_Length(N), Int32(vDSP_HANN_NORM))
+
+    var xw = [Float](repeating: 0, count: N)
+    vDSP_vmul(x, 1, window, 1, &xw, 1, vDSP_Length(N))
+
+    // --- 2) Full correlation (length 2N-1), zero-lag at index N-1 ---
+    // vDSP_conv computes lenResult outputs; signal length must be lenResult + lenFilter − 1.
+    // We want lenResult = 2N−1, lenFilter = N ⇒ signal length = 3N−2.
+    let paddedLen = 3 * N - 2
+    var padded = [Float](repeating: 0, count: paddedLen)
+    // center xw in padded so we get full correlation
+    padded.replaceSubrange((N - 1)..<(N - 1 + N), with: xw)
+
+    let resultLen = 2 * N - 1
+    var R = [Float](repeating: 0, count: resultLen)
+    // Positive filter stride ⇒ correlation (not convolution).
+    vDSP_conv(padded, 1, xw, 1, &R, 1, vDSP_Length(resultLen), vDSP_Length(N))
+
+    let zero = N - 1
+    let r0 = R[zero]
+    if r0 <= 1e-12 {
+        print("extractHNR: zero-lag too small r0=\(r0)")
+        return 0.0
+    }
+
+    // --- 3) Normalize ACF ---
+    var rnorm = [Float](repeating: 0, count: resultLen)
+    var r0Scalar = r0
+    vDSP_vsdiv(R, 1, &r0Scalar, &rnorm, 1, vDSP_Length(resultLen))
+
+    // --- 4) Search for peak in a plausible F0 lag range ---
+    // If you know the true sample rate, pass it in; here we assume 16 kHz windows of ~100 ms (N≈1600),
+    // so 500–50 Hz ⇒ 32..320 samples. Clamp to bounds just in case.
+    let minLag = max(32, 1)
+    let maxLag = min(320, resultLen - 1 - zero)
+
+    // Peak detection (after zero-lag)
+    let maxVal = rnorm.max() ?? 0
+    let allPeaks = findPeaks(in: rnorm, minProminence: 0.1 * maxVal)
+    let peaksInRange = allPeaks.filter { $0 >= zero + minLag && $0 <= zero + maxLag }
+
+    var rmax: Float = 0
+    var bestIdx = -1
+    if !peaksInRange.isEmpty {
+        for i in peaksInRange where rnorm[i] > rmax {
+            rmax = rnorm[i]; bestIdx = i
+        }
+    } else {
+        // Fallback to simple max in range
+        for k in (zero + minLag)...(zero + maxLag) where rnorm[k] > rmax {
+            rmax = rnorm[k]; bestIdx = k
         }
     }
-    
-    return 0.0
+
+    // --- 5) Convert to HNR in dB using normalized ACF peak ---
+    // HNR_dB = 10*log10( rmax / (1 - rmax) ), as in Praat’s cross-correlation method.
+    rmax = min(max(rmax, 0), 0.999999)
+    if rmax <= 0 {
+        print("extractHNR: no usable peak in range; rmax=\(rmax)")
+        // helpful debug dump:
+        print("extractHNR: peaks=\(allPeaks); peaksInRange=\(peaksInRange.map { ($0, rnorm[$0]) })")
+        return 0.0
+    }
+    let hnr = 10 * log10(rmax / max(1e-12, 1 - rmax))
+
+    // --- Debug logging ---
+    let around = 10
+    let a0 = max(0, zero - around), a1 = min(resultLen - 1, zero + around)
+    print("extractHNR: N=\(N) paddedLen=\(paddedLen) resultLen=\(resultLen) zero=\(zero)")
+    print("extractHNR: r0=\(r0) rnorm[zero]=\(rnorm[zero])")
+    print("extractHNR: rnorm[\(a0)..\(a1)] ≈ \(Array(rnorm[a0...a1]))")
+    print("extractHNR: total peaks=\(allPeaks.count)")
+    print("extractHNR: peaksInRange=\(peaksInRange.map { ($0, rnorm[$0]) })")
+    print("extractHNR: chosen lag=\(bestIdx >= 0 ? bestIdx - zero : -1) samples, rmax=\(rmax) ⇒ HNR=\(hnr) dB")
+
+    return hnr
 }
 
 // Helper functions
@@ -449,12 +518,14 @@ func computeRMS(from samples: [Float]) -> Float {
 }
 
 func computeZCR(from samples: [Float]) -> Float {
+    print("computeZCR: Starting ZCR computation on \(samples.count) samples")
     var zeroCrossings: Int = 0
     for i in 1..<samples.count {
         if (samples[i-1] * samples[i]) < 0 {
             zeroCrossings += 1
         }
     }
+    print("computeZCR: Found \(zeroCrossings) zero crossings")
     return Float(zeroCrossings) / Float(samples.count)
 }
 
@@ -467,12 +538,14 @@ private let N_BANDS = 7
 
 // Core audio processing functions
 func calculateZeroCrossingRate(_ data: [Float]) -> Float {
+    print("calculateZeroCrossingRate: Starting calculation on \(data.count) samples")
     var count: Float = 0
     for i in 1..<data.count {
         if (data[i] >= 0 && data[i-1] < 0) || (data[i] < 0 && data[i-1] >= 0) {
             count += 1
         }
     }
+    print("calculateZeroCrossingRate: ZCR = \(count / Float(data.count))")
     return count / Float(data.count)
 }
 
@@ -484,6 +557,7 @@ func calculateEnergy(_ data: [Float]) -> Float {
 
 // Feature extraction functions
 func computeFeatures(segmentData: [Float], sampleRate: Float, sumSquares: Float, zeroCrossings: Int, segmentLength: Int, featureOptions: [String: Bool]) -> Features {
+    print("In computeFeatures: Starting zeroCrossings on \(zeroCrossings) samples")
     let rms = sqrt(sumSquares / Float(segmentLength))
     let energy = featureOptions["energy"] == true ? sumSquares : 0
     let zcr = featureOptions["zcr"] == true ? Float(zeroCrossings) / Float(segmentLength) : 0
@@ -627,7 +701,7 @@ func extractRawAudioData(
         for channel in 0..<channels {
             let sample = floatData[channel][frame]
             
-            let normalizedSample = decodingConfig.normalizeAudio ? 
+            let normalizedSample = decodingConfig.normalizeAudio ?
                 max(-1.0, min(1.0, sample)) : sample
             
             switch targetBitDepth {
@@ -644,7 +718,7 @@ func extractRawAudioData(
     }
     
     // Only process normalized data if requested
-    let normalizedData: [Float]? = includeNormalizedData ? 
+    let normalizedData: [Float]? = includeNormalizedData ?
         Array(UnsafeBufferPointer(start: floatData[0], count: Int(finalBuffer.frameLength))) :
         nil
     
