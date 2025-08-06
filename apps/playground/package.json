@@ -59,7 +59,7 @@
         "open:android": "open -a \"Android Studio\" android",
         "predeploy": "APP_VARIANT=production EXPO_WEB=true expo export -p web",
         "serve:dev": "yarn clean && NODE_ENV=development APP_VARIANT=development EXPO_WEB=true expo export -p web && yarn serve dist/",
-        "prepare": "cd ../../ && husky install apps/playground/.husky",
+        "prepare:disabled": "cd ../../ && husky install apps/playground/.husky",
         "update-runtime-version": "node scripts/update-runtime-version.js",
         "update:patch": "yarn version --patch && yarn update-runtime-version",
         "update:minor": "yarn version --minor && yarn update-runtime-version",

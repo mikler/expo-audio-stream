@@ -503,5 +503,7 @@ function setupFromSource() {
 // Run the setup
 setupEssentia().catch(err => {
   console.error('Failed to set up Essentia:', err);
-  process.exit(1);
+  console.log('Please run ./build-essentia-ios.sh and/or ./build-essentia-android.sh to build the libraries manually.');
+  // Don't exit with an error code when used as git dependency, as this would cause npm/yarn to fail
+  // but the library might still be usable if the user builds it manually
 });
