@@ -48,7 +48,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "prepare:disabled": "bob build",
+    "prepare": "bob build",
     "publish-beta": "npm publish --tag beta",
     "setup": "./setup.sh",
     "build:ios": "./build-sherpa-ios.sh",

@@ -30,7 +30,7 @@
     ],
     "scripts": {
         "build": "tsc",
-        "prepare:disabled": "yarn build"
+        "prepare": "yarn build"
     },
     "peerDependencies": {
         "expo": "*",

@@ -8,7 +8,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc",
-    "prepare:disabled": "yarn build",
+    "prepare": "yarn build",
     "clean": "rm -rf build/",
     "watch": "tsc --watch"
   },
