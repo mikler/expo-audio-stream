@@ -1,7 +1,7 @@
 {
-    "name": "@siteed/expo-audio-studio",
-    "version": "2.18.1",
-    "description": "Comprehensive audio processing library for React Native and Expo with recording, analysis, visualization, and streaming capabilities across iOS, Android, and web",
+    "name": "@miklermpz/expo-audio-studio",
+    "version": "2.18.2",
+    "description": "This is a forked version of the original [expo-audio-studio](https://github.com/deeeed/expo-audio-stream/blob/main/packages/expo-audio-studio/README.md) by Arthur Breton <abreton@siteed.net> (https://github.com/deeeed)",
     "license": "MIT",
     "type": "commonjs",
     "main": "./build/cjs/index.js",
@@ -10,15 +10,15 @@
     "expo": {
         "plugin": "./app.plugin.js"
     },
-    "author": "Arthur Breton <abreton@siteed.net> (https://github.com/deeeed)",
-    "homepage": "https://github.com/deeeed/expo-audio-stream/blob/main/packages/expo-audio-studio/README.md",
+    "author": "miklermpz",
+    "homepage": "https://github.com/mikler/expo-audio-stream/blob/main/packages/expo-audio-studio/README.md",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/deeeed/expo-audio-stream.git",
+        "url": "git+https://github.com/mikler/expo-audio-stream.git",
         "directory": "packages/expo-audio-studio"
     },
     "bugs": {
-        "url": "https://github.com/deeeed/expo-audio-stream/issues"
+        "url": "https://github.com/mikler/expo-audio-stream/issues"
     },
     "keywords": [
         "react-native",
@@ -142,5 +142,6 @@
     "publishConfig": {
         "access": "public",
         "registry": "https://registry.npmjs.org"
-    }
+    },
+    "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

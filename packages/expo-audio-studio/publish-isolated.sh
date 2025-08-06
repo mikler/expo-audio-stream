@@ -1,0 +1,111 @@
+#!/bin/bash
+set -e
+
+# Define color codes
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Get absolute path of script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "Script directory: $SCRIPT_DIR"
+cd "$SCRIPT_DIR"
+
+echo -e "${BLUE}Starting isolated publication process for @miklermpz/expo-audio-studio...${NC}"
+
+# Check if logged in to npm
+if ! npm whoami &> /dev/null; then
+    echo -e "${RED}Error: Not logged in to npm. Please run 'npm login' first.${NC}"
+    exit 1
+fi
+
+NPM_USER=$(npm whoami)
+echo -e "${BLUE}Logged in as: $NPM_USER${NC}"
+
+# Create temporary directory for isolated build
+TEMP_DIR="/tmp/expo-audio-studio-publish-$$"
+echo -e "${YELLOW}Creating isolated build directory: $TEMP_DIR${NC}"
+mkdir -p "$TEMP_DIR"
+
+# Copy package files to temp directory
+echo -e "${YELLOW}Copying package files...${NC}"
+cp -r src "$TEMP_DIR/"
+cp -r ios "$TEMP_DIR/"
+cp -r android "$TEMP_DIR/"
+cp -r plugin "$TEMP_DIR/"
+cp package.json "$TEMP_DIR/"
+cp tsconfig*.json "$TEMP_DIR/"
+cp *.md "$TEMP_DIR/" 2>/dev/null || true
+cp LICENSE "$TEMP_DIR/" 2>/dev/null || true
+cp app.plugin.js "$TEMP_DIR/" 2>/dev/null || true
+cp expo-module.config.json "$TEMP_DIR/" 2>/dev/null || true
+cp *.podspec "$TEMP_DIR/" 2>/dev/null || true
+
+# Change to temp directory
+cd "$TEMP_DIR"
+
+# Install dependencies
+echo -e "${YELLOW}Installing dependencies...${NC}"
+npm install
+
+# Version bump
+echo -e "${YELLOW}Current version: $(node -p "require('./package.json').version")${NC}"
+read -p "$(echo -e ${YELLOW}Bump version? [patch/minor/major/skip]: ${NC})" version_bump
+
+if [[ $version_bump != "skip" ]]; then
+    if [[ $version_bump =~ ^(patch|minor|major)$ ]]; then
+        npm version $version_bump --no-git-tag-version
+        echo -e "${GREEN}Version bumped to: $(node -p "require('./package.json').version")${NC}"
+        # Copy updated package.json back to source
+        cp package.json "$SCRIPT_DIR/"
+    else
+        echo -e "${RED}Invalid version bump option. Skipping version bump.${NC}"
+    fi
+fi
+
+# Build
+echo -e "${YELLOW}Building package...${NC}"
+npm run build
+npm run build:plugin
+
+# Check package contents
+echo -e "${YELLOW}Checking package contents...${NC}"
+npm pack --dry-run
+
+# Ask for confirmation
+NEW_VERSION=$(node -p "require('./package.json').version")
+read -p "$(echo -e ${YELLOW}Publish @miklermpz/expo-audio-studio@$NEW_VERSION to npm? [y/N]: ${NC})" confirm_publish
+
+if [[ $confirm_publish =~ ^[Yy]$ ]]; then
+    echo -e "${YELLOW}Publishing to npm...${NC}"
+    npm publish --access public
+    echo -e "${GREEN}Successfully published @miklermpz/expo-audio-studio@$NEW_VERSION!${NC}"
+    
+    # Go back to original directory for git operations
+    cd "$SCRIPT_DIR"
+    
+    # Optional: commit and tag
+    read -p "$(echo -e ${YELLOW}Commit and tag this version? [y/N]: ${NC})" commit_tag
+    if [[ $commit_tag =~ ^[Yy]$ ]]; then
+        git add package.json
+        git commit -m "chore: release @miklermpz/expo-audio-studio@$NEW_VERSION"
+        git tag "v$NEW_VERSION"
+        echo -e "${GREEN}Committed and tagged v$NEW_VERSION${NC}"
+        
+        read -p "$(echo -e ${YELLOW}Push to remote? [y/N]: ${NC})" push_remote
+        if [[ $push_remote =~ ^[Yy]$ ]]; then
+            git push && git push --tags
+            echo -e "${GREEN}Pushed to remote${NC}"
+        fi
+    fi
+else
+    echo -e "${BLUE}Publication cancelled.${NC}"
+fi
+
+# Cleanup
+echo -e "${YELLOW}Cleaning up temporary directory...${NC}"
+rm -rf "$TEMP_DIR"
+
+echo -e "${GREEN}Done!${NC}"
